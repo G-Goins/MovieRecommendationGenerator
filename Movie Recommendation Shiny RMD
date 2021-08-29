@@ -1,0 +1,155 @@
+#Load up the relevant libraries
+library(shiny)
+library(arules)
+
+#Repeat data processing
+#Read in data
+
+
+head(POPULARITY)
+valid.choices <- sort( POPULARITY$title[ which(POPULARITY$Freq > 0.5) ] )
+genre.choices <- c("Horror", "Science Fiction", "Comedy","Western","Romance","Adventure","Action","Thriller","Documentary","Thriller","Animated")
+genre.choices2 <- unique(META$genres)
+
+ui <- fluidPage(
+
+    # Application title (no modification needed)
+    titlePanel("Movie Recommendations"),
+
+    # Sidebar layout 
+    sidebarLayout(
+        #Sidebar panel (no modification needed)
+        sidebarPanel(
+            #Selectized dropdown menu that allows user to select multiple movies
+            #Since we wrote code with movies as vector containing these, let's name
+            #this element "movies"
+            selectInput(inputId="movies",
+                        label="What movies do you like?",
+                        choices = valid.choices,
+                        selectize = TRUE,
+                        multiple = TRUE),
+            #Slider for number of movies; in code we defined a variable called number, so
+            #let's name this element after that.  Need to choose default value, min, and max
+            sliderInput(inputId="number",
+                        label="How many recommendations would you like?", 
+                        value=10, min = 1, max = 100, step = 1),
+            #Slider for minimum level of confidence; in code we defined a variable called confidence, so
+            #let's name this element after that.  Need to choose default value, min, and max
+            sliderInput(inputId="confidence",
+                        label="The level of confidence you would like?",
+                        min=0,max=1, value = .75, step = .05),
+            #Slider for maximum popularity of the movies; in code we defined a variable called popularity, so
+            #let's name this element after that.  Need to choose default value, min, and max
+            numericInput("popularity","Minimum popularity of recommendations (0-25 percent)",value = 5,min = 0,max = 100,step = 0.5),
+            
+            #Add a button to sort by Movie Name instead of confidence
+            radioButtons(inputId = "choice",label="Would you like to sort by movie title?",choices=c("Yes","No"),selected = "No"),
+            #Add a "refresh" button that prevents dynamic update of recommendations until user clicks
+            #on the button
+            submitButton("Submit", icon("refresh")),
+        ),
+            
+        #Set up main panel where table will be 
+        mainPanel(
+            #We want a table giving the recommendations
+            tableOutput(outputId="recommendations")
+        )
+    )
+)
+
+# Define server logic required to make table
+# Unlike previous shiny apps, we need a 3rd argument "session" to allow the submit button to work
+server <- function(input, output, session) {
+
+    #We are going to make a table
+    #All the code that we used to make rules will go in here.  Copy/paste!
+    #Easiest way:  create variables stores, number, and confidence (which we defined to be specific)
+    #values in the test code from what user selected so minimal modification is required
+        
+        
+        output$recommendations <- renderTable({ 
+            
+            movies <- input$movies
+            number <- input$number
+            confidence <- input$confidence
+            popularity <- input$popularity
+            choice <- input$choice
+            
+            #You need to change:
+            #Have movies, confidence, popularity, choice, and number be dynamically defined by what user puts in ui part
+           
+            #Make the app experience more enjoyable for the others
+            
+            if( is.null(movies) ) { return( "<------ Input your favorite movies to get recommendations" ) } 
+        
+            
+            
+            #If no movies are selected, return an empty vector
+            if( is.null(movies) ) { return( "Your message when no movies have been selected" ) } 
+            
+            
+            invalid <- POPULARITY$title[ which(POPULARITY$Freq > popularity) ]
+            invalid <- setdiff( invalid , movies )
+
+            
+            RULES <- apriori(TRANS,parameter = list(supp=0.0000192,conf=confidence,minlen=2,maxtime=0),
+                             appearance = list(none=invalid,lhs=movies,default="rhs"),
+                             control=list(verbose=FALSE)) 
+            
+            #Do a check
+            #If there are no rules, then add a message to the user that says such
+            
+            if( is.null(length(RULES) )) { return( "<------ No rules can be found/No recommendations available" ) } 
+            
+            RULES <- RULES[is.significant(RULES,TRANS)]
+                           
+            RULESDF <- DATAFRAME(RULES, separate = TRUE, setStart = '', itemSep = ' + ', setEnd = '')
+            
+            legit.recommendations <- setdiff( RULESDF$RHS, movies) 
+            
+            if( is.null(nrow(RULESDF)) ) { return( "<------ No rules can be found" ) }
+            
+            RULESDF <- subset(RULESDF, RHS %in% legit.recommendations)
+            
+           
+          
+            
+            RECS <- aggregate( confidence ~ RHS, data= RULESDF, FUN =max )
+            
+            RESULTS <- merge(RECS,POPULARITY,by.x="RHS",by.y="title")
+            names(RESULTS) <- c("Movie","Confidence","Popularity")
+            
+            
+            RESULTS <- RESULTS[order(RESULTS$Confidence,decreasing=TRUE),]
+            RESULTS <- head(RESULTS,number)
+            RESULTS$Movie <- as.character( RESULTS$Movie )
+            
+            if( choice=="Yes") { 
+                RESULTS <- RESULTS[order(RESULTS$Movie,decreasing=FALSE),]
+            }
+            row.names(RESULTS) <- NULL
+            RESULTS
+            
+            
+            
+          
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            } )
+
+}
+
+# Run the application 
+shinyApp(ui = ui, server = server)
